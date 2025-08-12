@@ -1,41 +1,69 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="auto">
 <head>
 <meta charset="utf-8" />
-<title>Mpox – Confirmés (barres) + Suspects (ligne) • Filtres + Zoom + Transitions + Slider</title>
+<title>Mpox – Confirmés (barres) + Suspects (ligne) • Filtres + Zoom + Transitions + Export + Thèmes</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <style>
+/* Thèmes : dark & light (avec fallback auto) */
 :root{
   --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --muted:#94a3b8; --grid:#334155;
-  --confirme:#8b5cf6; --suspect:#22d3ee; --hover:#f59e0b;
+  --confirme:#8b5cf6; --suspect:#22d3ee; --hover:#f59e0b; --axis:#94a3b8;
 }
+:root[data-theme="light"]{
+  --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
+  --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155;
+}
+@media (prefers-color-scheme: light){
+  :root[data-theme="auto"]{
+    --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
+    --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155;
+  }
+}
+
+*{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
-.wrap{max-width:1100px;margin:32px auto;padding:20px;background:var(--panel);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.wrap{max-width:1100px;margin:32px auto;padding:20px;background:var(--panel);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
 h1{margin:0 0 8px;font-size:clamp(20px,2.4vw,28px)}
 .subtitle{color:var(--muted);margin-bottom:12px}
 .controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;align-items:center}
-select,input[type="range"],input[type="file"]{padding:4px;border-radius:6px;border:1px solid var(--grid);background:#1e293b;color:var(--text)}
-.chart{width:100%;aspect-ratio:16/9;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0))}
+select,input[type="range"],input[type="file"],button{
+  padding:6px 10px;border-radius:8px;border:1px solid var(--grid);background:#1e293b;color:#e5e7eb
+}
+:root[data-theme="light"] select,
+:root[data-theme="light"] input[type="range"],
+:root[data-theme="light"] input[type="file"],
+:root[data-theme="light"] button{background:#fff;color:#0f172a}
+.btn{cursor:pointer}
+.chart{width:100%;aspect-ratio:16/9;border-radius:12px;background:linear-gradient(180deg,rgba(0,0,0,.03),rgba(0,0,0,0))}
 .axis path,.axis line{stroke:var(--grid)}
-.grid line{stroke:var(--grid);stroke-opacity:.5}
+.axis text{fill:var(--axis)}
+.grid line{stroke:var(--grid);stroke-opacity:.6}
 .tooltip{
   position:fixed; pointer-events:none; z-index:10; background:#0b1020; border:1px solid #1f2937; color:#e5e7eb;
   padding:8px 10px; border-radius:8px; font-size:12px; box-shadow:0 6px 22px rgba(0,0,0,.35);
   transform:translate(-50%,calc(-100% - 10px)); opacity:0; transition:opacity .12s ease;
 }
+:root[data-theme="light"] .tooltip{background:#111827;border-color:#0f172a;color:#e5e7eb}
 .legend{display:flex;gap:16px;align-items:center;margin-top:8px;color:var(--muted);font-size:13px}
 .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
 .note{color:var(--muted);font-size:12px;margin-top:6px}
 .bar:hover{ fill: var(--hover) !important; }
 .dot:hover{ fill: var(--hover) !important; }
 .hidden{display:none}
+.switch{display:inline-flex;align-items:center;gap:6px}
+.switch input{appearance:none;width:40px;height:22px;border-radius:999px;position:relative;outline:none;border:1px solid var(--grid);background:#1f2937}
+.switch input:checked{background:#60a5fa}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked::after{transform:translateX(18px)}
+:root[data-theme="light"] .switch input{background:#e5e7eb}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Mpox – Cas confirmés (barres) & cas suspects (ligne)</h1>
-  <div class="subtitle">Version en ligne — charge automatiquement <code>df.csv</code> (même dossier). Fallback upload si le fichier est absent.</div>
+  <div class="subtitle">Filtres, zoom/pan, transitions. Export PNG/SVG + thème clair/sombre.</div>
   <div class="controls">
     <label>Département :
       <select id="departementSelect"></select>
@@ -43,12 +71,17 @@ select,input[type="range"],input[type="file"]{padding:4px;border-radius:6px;bord
     <label>District :
       <select id="districtSelect"></select>
     </label>
-    <label>Durée transitions (ms) :
+    <label>Durée (ms) :
       <input type="range" id="durSlider" min="0" max="2000" step="50" value="650" />
       <span id="durVal">650</span>
     </label>
-    <span id="status" style="color:var(--muted);font-size:13px">Chargement…</span>
-    <!-- Fallback upload si df.csv n'est pas trouvé -->
+    <button class="btn" id="btnSvg">Export SVG</button>
+    <button class="btn" id="btnPng">Export PNG</button>
+    <label class="switch" title="Basculer thème clair/sombre">
+      <span>Thème</span>
+      <input type="checkbox" id="themeToggle">
+    </label>
+    <span id="status" style="color:var(--muted);font-size:13px;margin-left:auto">Chargement…</span>
     <label id="uploadWrap" class="hidden">CSV local :
       <input type="file" id="file" accept=".csv" />
     </label>
@@ -63,6 +96,20 @@ select,input[type="range"],input[type="file"]{padding:4px;border-radius:6px;bord
 <div class="tooltip" id="tooltip"></div>
 
 <script>
+/* ---------- Thème clair/sombre ---------- */
+const rootEl = document.documentElement;
+const themeToggle = document.getElementById("themeToggle");
+// mémoriser le choix
+const savedTheme = localStorage.getItem("theme") || "auto";
+rootEl.setAttribute("data-theme", savedTheme);
+themeToggle.checked = (savedTheme === "light") || (savedTheme === "auto" && matchMedia('(prefers-color-scheme: light)').matches);
+themeToggle.addEventListener("change", () => {
+  const val = themeToggle.checked ? "light" : "dark";
+  rootEl.setAttribute("data-theme", val);
+  localStorage.setItem("theme", val);
+});
+
+/* ---------- Variables & éléments ---------- */
 const svg = d3.select(".chart");
 const statusEl = document.getElementById("status");
 const departementSelect = document.getElementById("departementSelect");
@@ -72,6 +119,8 @@ const durSlider = document.getElementById("durSlider");
 const durVal = document.getElementById("durVal");
 const uploadWrap = document.getElementById("uploadWrap");
 const fileInput = document.getElementById("file");
+const btnSvg = document.getElementById("btnSvg");
+const btnPng = document.getElementById("btnPng");
 
 const margin = {top: 28, right: 30, bottom: 64, left: 64};
 let DUR = +durSlider.value;
@@ -79,13 +128,13 @@ const EASE = d3.easeCubic;
 
 let allRows = [];
 let currentData = [];
-let zx, xIndex; // X scales (zoomable)
-let y;          // Y scale (common)
+let zx, xIndex;
+let y;
 
-// Slider durée
+/* ---------- Slider durée ---------- */
 durSlider.addEventListener("input", () => { DUR = +durSlider.value; durVal.textContent = DUR; });
 
-// Responsive
+/* ---------- Responsive ---------- */
 function getSize(){
   const { width } = svg.node().getBoundingClientRect();
   const height = width / (16/9);
@@ -94,7 +143,7 @@ function getSize(){
 }
 window.addEventListener("resize", () => drawChart(currentData, true));
 
-// ---- Chargement hébergé : df.csv (même dossier) ----
+/* ---------- Chargement df.csv (hébergé) + fallback upload ---------- */
 loadHostedCSV("df.csv")
   .then(rows => { statusEl.textContent = `OK – ${rows.length} lignes`; init(rows); })
   .catch(() => {
@@ -102,10 +151,8 @@ loadHostedCSV("df.csv")
     uploadWrap.classList.remove("hidden");
   });
 
-// Fallback: upload local
 fileInput?.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if(!file) return;
+  const file = e.target.files[0]; if(!file) return;
   statusEl.textContent = `Chargement local: ${file.name}…`;
   const reader = new FileReader();
   reader.onload = () => {
@@ -117,11 +164,10 @@ fileInput?.addEventListener("change", (e) => {
 });
 
 async function loadHostedCSV(path){
-  // d3.dsv gère fetch + parse ; on force le cache-busting pour Pages si besoin
   return d3.dsv(";", `${path}?v=${Date.now()}`);
 }
 
-// ---- Initialisation / Filtres ----
+/* ---------- Init & filtres ---------- */
 function init(rows){
   allRows = rows;
   const deps = Array.from(new Set(allRows.map(d => d.Departements?.trim()).filter(Boolean))).sort();
@@ -148,21 +194,14 @@ function updateChart(first=false){
     Departements: (d.Departements || "").trim(),
     Districts_Sanitaires: (d.Districts_Sanitaires || "").trim()
   }));
-  if(departementSelect.value){
-    rows = rows.filter(d => d.Departements === departementSelect.value);
-  }
-  if(districtSelect.value){
-    rows = rows.filter(d => d.Districts_Sanitaires === districtSelect.value);
-  }
+  if(departementSelect.value){ rows = rows.filter(d => d.Departements === departementSelect.value); }
+  if(districtSelect.value){ rows = rows.filter(d => d.Districts_Sanitaires === districtSelect.value); }
+
   const grouped = d3.rollups(
     rows,
-    v => ({
-      cas_suspect: d3.sum(v, d => d.cas_suspect),
-      cas_confirme: d3.sum(v, d => d.cas_confirme)
-    }),
+    v => ({ cas_suspect: d3.sum(v, d => d.cas_suspect), cas_confirme: d3.sum(v, d => d.cas_confirme) }),
     d => d.Year_Week
-  ).map(([k, v]) => ({Year_Week: k, ...v}))
-   .filter(d => d.Year_Week);
+  ).map(([k, v]) => ({Year_Week: k, ...v})).filter(d => d.Year_Week);
 
   grouped.sort((a,b) => {
     const pa = parseYW(a.Year_Week), pb = parseYW(b.Year_Week);
@@ -173,7 +212,7 @@ function updateChart(first=false){
   drawChart(grouped, first);
 }
 
-// ---- Dessin + Zoom + Transitions ----
+/* ---------- Dessin + Zoom + Transitions ---------- */
 function drawChart(data, first=false){
   svg.selectAll("*").remove();
   const {W, H} = getSize();
@@ -182,10 +221,10 @@ function drawChart(data, first=false){
 
   const root = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-  // Échelles
   y = d3.scaleLinear()
     .domain([0, d3.max(data, d => Math.max(d.cas_confirme, d.cas_suspect)) || 1]).nice()
     .range([innerH, 0]);
+
   const n = data.length;
   xIndex = d3.scaleLinear().domain([0, n]).range([0, innerW]);
   zx = xIndex.copy();
@@ -205,8 +244,8 @@ function drawChart(data, first=false){
   const barsG   = root.append("g");
   const lineG   = root.append("g");
   const dotsG   = root.append("g");
-  const axisXG  = root.append("g").attr("transform", `translate(0,${innerH})`);
-  const axisYG  = root.append("g");
+  const axisXG  = root.append("g").attr("class","axis").attr("transform", `translate(0,${innerH})`);
+  const axisYG  = root.append("g").attr("class","axis");
 
   // Barres confirmés
   const bars = barsG.selectAll("rect").data(data, d => d.Year_Week);
@@ -306,18 +345,6 @@ function drawChart(data, first=false){
     .style("fill", "var(--text)")
     .text("Semaine épidémiologique (Year_Week)");
 
-  // Rendu positions (pour zoom)
-  function renderOnlyPositions(){
-    barsG.selectAll("rect")
-      .attr("x", (d,i) => barX(i) + (Math.abs(zx(i+1)-zx(i)) - barW(i))/2)
-      .attr("width", (d,i) => barW(i));
-    lineG.selectAll("path").attr("d", lineGen);
-    dotsG.selectAll("circle")
-      .attr("cx", (d,i) => barCenter(i))
-      .attr("cy", d => y(d.cas_suspect));
-    updateAxisXTicks();
-  }
-
   // Axe X dynamique
   function updateAxisXTicks(){
     const visStart = Math.max(0, Math.floor(zx.invert(0)));
@@ -330,11 +357,20 @@ function drawChart(data, first=false){
       d3.axisBottom(d3.scaleLinear().domain([0, innerW]).range([0, innerW]))
         .tickValues(ticks.map(t => zx(t.idx)))
         .tickFormat((_, i) => ticks[i]?.label ?? "")
-    )
-    .selectAll("text").attr("transform","rotate(-35)").style("text-anchor","end");
+    ).selectAll("text").attr("transform","rotate(-35)").style("text-anchor","end");
   }
 
   // Zoom / Pan
+  function renderOnlyPositions(){
+    barsG.selectAll("rect")
+      .attr("x", (d,i) => barX(i) + (Math.abs(zx(i+1)-zx(i)) - barW(i))/2)
+      .attr("width", (d,i) => barW(i));
+    lineG.selectAll("path").attr("d", lineGen);
+    dotsG.selectAll("circle")
+      .attr("cx", (d,i) => barCenter(i))
+      .attr("cy", d => y(d.cas_suspect));
+    updateAxisXTicks();
+  }
   const zoom = d3.zoom()
     .scaleExtent([1, 20])
     .translateExtent([[0,0],[innerW,innerH]])
@@ -349,18 +385,92 @@ function drawChart(data, first=false){
   overlay.lower();
   svg.call(zoom);
   overlay.on("dblclick", () => svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity));
-
-  // Infobulles
-  function showTip(d){
-    const total = d.cas_confirme + d.cas_suspect;
-    tooltip.innerHTML = `<strong>${d.Year_Week}</strong><br/>confirmés : <b>${d.cas_confirme}</b><br/>suspects : <b>${d.cas_suspect}</b><br/>total : <b>${total}</b>`;
-    tooltip.style.opacity = 1;
-  }
-  function moveTip(e){ tooltip.style.left = e.clientX + "px"; tooltip.style.top = e.clientY + "px"; }
-  function hideTip(){ tooltip.style.opacity = 0; }
 }
 
-// Helpers
+/* ---------- Infobulles ---------- */
+function showTip(d){
+  const total = d.cas_confirme + d.cas_suspect;
+  tooltip.innerHTML = `<strong>${d.Year_Week}</strong><br/>confirmés : <b>${d.cas_confirme}</b><br/>suspects : <b>${d.cas_suspect}</b><br/>total : <b>${total}</b>`;
+  tooltip.style.opacity = 1;
+}
+function moveTip(e){ tooltip.style.left = e.clientX + "px"; tooltip.style.top = e.clientY + "px"; }
+function hideTip(){ tooltip.style.opacity = 0; }
+
+/* ---------- Export SVG & PNG ---------- */
+// Récupère tous les styles CSS pour les inclure dans l’export SVG (fidèle au thème)
+function getInlineStyles(){
+  let css = "";
+  for(const sheet of document.styleSheets){
+    try{
+      for(const rule of sheet.cssRules){ css += rule.cssText + "\n"; }
+    }catch(e){ /* ignore CORS */ }
+  }
+  return css;
+}
+function cloneCurrentSVG(){
+  const node = document.querySelector("svg.chart");
+  const clone = node.cloneNode(true);
+  // Ajout d'un <style> inline avec nos CSS (thème + styles)
+  const style = document.createElement("style");
+  style.setAttribute("type","text/css");
+  style.textContent = getInlineStyles();
+  clone.insertBefore(style, clone.firstChild);
+  return clone;
+}
+function downloadBlob(blob, filename){
+  const a = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+
+btnSvg.addEventListener("click", () => {
+  const clone = cloneCurrentSVG();
+  const serializer = new XMLSerializer();
+  let svgStr = serializer.serializeToString(clone);
+  // Ajoute namespace si absent
+  if(!svgStr.match(/^<svg[^>]+xmlns=/)){
+    svgStr = svgStr.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+  const blob = new Blob([svgStr], {type: "image/svg+xml;charset=utf-8"});
+  downloadBlob(blob, `mpox_${new Date().toISOString().slice(0,10)}.svg`);
+});
+
+btnPng.addEventListener("click", async () => {
+  const clone = cloneCurrentSVG();
+  const vb = clone.getAttribute("viewBox")?.split(" ").map(Number) || [0,0,1100,1100/16*9];
+  const w = vb[2], h = vb[3];
+  const scale = 2; // PNG @2x
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(w*scale);
+  canvas.height = Math.round(h*scale);
+  const ctx = canvas.getContext("2d");
+  // Fond selon thème courant
+  const theme = document.documentElement.getAttribute("data-theme");
+  const light = theme === "light" || (theme === "auto" && matchMedia('(prefers-color-scheme: light)').matches);
+  ctx.fillStyle = light ? "#ffffff" : "#0f172a";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  const serializer = new XMLSerializer();
+  let svgStr = serializer.serializeToString(clone);
+  if(!svgStr.match(/^<svg[^>]+xmlns=/)){
+    svgStr = svgStr.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+  const svgBlob = new Blob([svgStr], {type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(svgBlob);
+
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(blob => downloadBlob(blob, `mpox_${new Date().toISOString().slice(0,10)}.png`), "image/png");
+  };
+  img.onerror = () => { alert("Erreur lors du rendu PNG."); URL.revokeObjectURL(url); };
+  img.src = url;
+});
+
+/* ---------- Helpers ---------- */
 function parseYW(s){ const m = /(\d{4})\D+(\d+)/.exec(s||""); return {year: m? +m[1]:0, week: m? +m[2]:0}; }
 </script>
 </body>
