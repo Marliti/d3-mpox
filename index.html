@@ -1,3 +1,105 @@
+<!doctype html>
+<html lang="fr" data-theme="auto">
+<head>
+<meta charset="utf-8" />
+<title>Mpox – Confirmés + Suspects • Tendance + Lissage + Annotation stats</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+:root{
+  --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --muted:#94a3b8; --grid:#334155;
+  --confirme:#8b5cf6; --suspect:#22d3ee; --hover:#f59e0b; --axis:#94a3b8; --trend:#10b981; --smooth:#ef4444;
+}
+:root[data-theme="light"]{
+  --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
+  --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155; --trend:#059669; --smooth:#dc2626;
+}
+@media (prefers-color-scheme: light){
+  :root[data-theme="auto"]{
+    --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
+    --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155; --trend:#059669; --smooth:#dc2626;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+.wrap{max-width:1100px;margin:32px auto;padding:20px;background:var(--panel);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+h1{margin:0 0 8px;font-size:clamp(20px,2.4vw,28px)}
+.subtitle{color:var(--muted);margin-bottom:12px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;align-items:center}
+select,input[type="range"],input[type="file"],button{padding:6px 10px;border-radius:8px;border:1px solid var(--grid);background:#1e293b;color:#e5e7eb}
+:root[data-theme="light"] select,:root[data-theme="light"] input[type="range"],:root[data-theme="light"] input[type="file"],:root[data-theme="light"] button{background:#fff;color:#0f172a}
+.btn{cursor:pointer}
+.chart{width:100%;aspect-ratio:16/9;border-radius:12px;background:linear-gradient(180deg,rgba(0,0,0,.03),rgba(0,0,0,0))}
+.axis path,.axis line{stroke:var(--grid)} .axis text{fill:var(--axis)}
+.grid line{stroke:var(--grid);stroke-opacity:.6}
+.tooltip{
+  position:fixed; pointer-events:none; z-index:10; background:#0b1020; border:1px solid #1f2937; color:#e5e7eb;
+  padding:8px 10px; border-radius:8px; font-size:12px; box-shadow:0 6px 22px rgba(0,0,0,.35);
+  transform:translate(-50%,calc(-100% - 10px)); opacity:0; transition:opacity .12s ease;
+}
+:root[data-theme="light"] .tooltip{background:#111827;border-color:#0f172a;color:#e5e7eb}
+.legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:8px;color:var(--muted);font-size:13px}
+.swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
+.note{color:var(--muted);font-size:12px;margin-top:6px}
+.bar:hover{ fill: var(--hover) !important; } .dot:hover{ fill: var(--hover) !important; }
+.hidden{display:none}
+.switch{display:inline-flex;align-items:center;gap:6px}
+.switch input{appearance:none;width:40px;height:22px;border-radius:999px;position:relative;outline:none;border:1px solid var(--grid);background:#1f2937}
+.switch input:checked{background:#60a5fa}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s}
+.switch input:checked::after{transform:translateX(18px)}
+:root[data-theme="light"] .switch input{background:#e5e7eb}
+.badge{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mpox – Cas confirmés (barres) & cas suspects (ligne)</h1>
+  <div class="subtitle">Tendance (régression) + lissage (moyenne mobile) avec annotation statistique. Filtres, zoom/pan, transitions, export PNG/SVG, thème.</div>
+
+  <div class="controls">
+    <label>Département :
+      <select id="departementSelect"></select>
+    </label>
+    <label>District :
+      <select id="districtSelect"></select>
+    </label>
+    <label>Durée (ms) :
+      <input type="range" id="durSlider" min="0" max="2000" step="50" value="650" />
+      <span id="durVal">650</span>
+    </label>
+
+    <label><input type="checkbox" id="chkTrend" checked> Tendance (régression)</label>
+    <label><input type="checkbox" id="chkSmooth"> Lissage</label>
+    <span class="badge">fenêtre:</span>
+    <input type="range" id="smoothWin" min="3" max="15" step="2" value="5" style="width:120px">
+    <span id="smoothVal" class="badge">5</span>
+
+    <button class="btn" id="btnSvg">Export SVG</button>
+    <button class="btn" id="btnPng">Export PNG</button>
+
+    <label class="switch" title="Basculer thème clair/sombre">
+      <span>Thème</span>
+      <input type="checkbox" id="themeToggle">
+    </label>
+    <span id="status" style="color:var(--muted);font-size:13px;margin-left:auto">Chargement…</span>
+    <label id="uploadWrap" class="hidden">CSV local :
+      <input type="file" id="file" accept=".csv" />
+    </label>
+  </div>
+
+  <svg class="chart"></svg>
+
+  <div class="legend">
+    <span class="swatch" style="background:var(--confirme)"></span> cas_confirmé (barres)
+    <span class="swatch" style="background:var(--suspect)"></span> cas_suspect (ligne + points)
+    <span class="swatch" style="background:var(--trend)"></span> tendance (régression)
+    <span class="swatch" style="background:var(--smooth)"></span> lissage (moyenne mobile)
+  </div>
+  <div class="note">Double-clic dans le graphique pour réinitialiser le zoom.</div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+
 <script>
 /* ---------- Thème ---------- */
 const rootEl = document.documentElement;
@@ -106,53 +208,15 @@ function drawChart(data, first=false){
   const {W, H} = getSize(), innerW = W - margin.left - margin.right, innerH = H - margin.top - margin.bottom;
   const root = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-  // Stats de base
+  y = d3.scaleLinear().domain([0, d3.max(data, d => Math.max(d.cas_confirme, d.cas_suspect)) || 1]).nice().range([innerH, 0]);
   const n = data.length;
-  const xs = d3.range(n);
-  const ys = data.map(d=>d.cas_confirme);
-
-  // Régression + IC + projection (calculs avant l'échelle Y)
-  let reg=null, ciPairs=[], forecastPts=[];
-  const forecastWeeks = 8;
-  if(chkTrend.checked && n>=3){
-    reg = linregFull(xs, ys); // {a,b,r2,s,xbar,Sxx}
-    // t critique 95% (approx) : 1.96 si n>=30, sinon ~2.262 (df≈n-2)
-    const tcrit = (n>=30) ? 1.96 : 2.262;
-
-    // CI 95% pour la moyenne : ŷ ± tcrit * s * sqrt(1/n + (x-x̄)^2 / Sxx)
-    ciPairs = xs.map(i => {
-      const yhat = reg.a + reg.b * i;
-      const seMean = reg.s * Math.sqrt( (1/n) + ((i - reg.xbar)**2) / (reg.Sxx || 1e-9) );
-      return { i, upper: yhat + tcrit*seMean, lower: yhat - tcrit*seMean };
-    });
-
-    // Projection +1…+8 semaines
-    forecastPts = d3.range(1, forecastWeeks+1).map(k => {
-      const i = (n-1) + k;
-      return { i, y: reg.a + reg.b * i };
-    });
-  }
-
-  // Domaine Y (prend en compte CI et projection)
-  const yMaxData = d3.max(data, d => Math.max(d.cas_confirme, d.cas_suspect)) || 1;
-  const yMaxCI   = ciPairs.length ? d3.max(ciPairs, d=>d.upper) : 0;
-  const yMaxF    = forecastPts.length ? d3.max(forecastPts, d=>d.y) : 0;
-  const yMax     = Math.max(yMaxData, yMaxCI, yMaxF);
-  y = d3.scaleLinear().domain([0, yMax * 1.08]).nice().range([innerH, 0]);
-
-  // X (domaine [0,n], extrapolation OK pour la projection)
   xIndex = d3.scaleLinear().domain([0, n]).range([0, innerW]); zx = xIndex.copy();
 
-  const baseBarPad = 0.88;
-  const barX = i => zx(i);
-  const barW = i => Math.max(1, Math.abs(zx(i+1) - zx(i)) * baseBarPad);
-  const barCenter = i => zx(i) + barW(i)/2;
+  const baseBarPad = 0.88, barX = i => zx(i), barW = i => Math.max(1, Math.abs(zx(i+1)-zx(i))*baseBarPad), barCenter = i => zx(i)+barW(i)/2;
 
-  // Grille
   root.append("g").attr("class","grid").call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat("")).selectAll("line").attr("opacity", .6);
 
-  const overlayG = root.append("g"), barsG=root.append("g"), lineG=root.append("g"), dotsG=root.append("g"),
-        extrasG=root.append("g"), annotG=root.append("g");
+  const overlayG = root.append("g"), barsG=root.append("g"), lineG=root.append("g"), dotsG=root.append("g"), extrasG=root.append("g"), annotG=root.append("g");
   const axisXG = root.append("g").attr("class","axis").attr("transform", `translate(0,${innerH})`);
   const axisYG = root.append("g").attr("class","axis");
 
@@ -178,6 +242,7 @@ function drawChart(data, first=false){
   path.attr("d", oldD).transition().duration(first?0:DUR).ease(EASE).attrTween("d", ()=> {
     const i = d3.interpolateString(oldD, newD); return t => i(t);
   });
+
   dotsG.selectAll("circle").data(data, d=>d.Year_Week).join(
     en => en.append("circle").attr("class","dot").attr("r",0).attr("fill","var(--suspect)")
       .attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect))
@@ -188,69 +253,45 @@ function drawChart(data, first=false){
     ex => ex.call(ex=>ex.transition().duration(Math.max(150,DUR/1.3)).ease(EASE).attr("r",0).style("opacity",0).remove())
   );
 
-  // Régression + IC + projection
-  let regStats = null, smoothStats = null;
-  if(reg){
-    regStats = {a:reg.a, b:reg.b, r2:reg.r2};
-
-    // Bande IC95% correcte (upper/lower synchronisés)
-    const area = d3.area()
-      .x(d => barCenter(d.i))
-      .y0(d => y(d.lower))
-      .y1(d => y(d.upper))
-      .curve(d3.curveMonotoneX);
-
-    extrasG.append("path")
-      .datum(ciPairs)
-      .attr("fill","var(--trendBand)")
-      .attr("stroke","none")
-      .attr("d", area)
-      .attr("opacity",0)
-      .transition().duration(first?0:DUR).attr("opacity",1);
-
-    // Ligne de tendance
-    const trendPts = xs.map(i => ({i, y: reg.a + reg.b*i}));
-    const trendLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y)).curve(d3.curveMonotoneX);
-    extrasG.append("path")
-      .datum(trendPts)
-      .attr("fill","none").attr("stroke","var(--trend)").attr("stroke-width",2.5)
-      .attr("d", trendLine)
-      .attr("opacity",0).transition().duration(first?0:DUR).attr("opacity",1);
-
-    // Projection (pointillée) +1…+8 semaines
-    if(forecastPts.length){
-      const fLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y));
-      extrasG.append("path")
-        .datum([{i:n-1, y: reg.a + reg.b*(n-1)}, ...forecastPts])
-        .attr("fill","none").attr("stroke","var(--forecastDash)").attr("stroke-width",2.5).attr("stroke-dasharray","6,6")
-        .attr("d", fLine)
-        .attr("opacity",0).transition().duration(first?0:DUR).attr("opacity",1);
-    }
-  }
-
-  // Lissage (optionnel)
-  if(chkSmooth.checked && n>=3){
-    const k = Math.max(3, (+smoothWin.value|0) || 5);
-    const sm = movingAverage(ys, k);
-    const smPts = sm.map((yhat,i)=>({i,y:yhat})).filter(d=>!Number.isNaN(d.y));
-    if(smPts.length){
-      const smLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y)).curve(d3.curveMonotoneX);
-      extrasG.append("path").datum(smPts)
-        .attr("fill","none").attr("stroke","var(--smooth)").attr("stroke-width",2)
-        .attr("d", smLine).attr("opacity",0)
-        .transition().duration(first?0:DUR).attr("opacity",1);
-      const L = smPts.length, last=smPts[L-1].y, prev=smPts[L-2]?.y ?? NaN;
-      smoothStats = {k, last, delta: last - (isNaN(prev)? last : prev)};
-    }
-  }
-
   // Axes + titres
   axisYG.call(d3.axisLeft(y).ticks(6));
   updateAxisXTicks();
   svg.append("text").attr("transform","rotate(-90)").attr("y",18).attr("x",-(H/2)).attr("dy","1em").style("text-anchor","middle").style("fill","var(--text)").text("Nombre de cas");
   svg.append("text").attr("transform",`translate(${(W/2)}, ${H-10})`).style("text-anchor","middle").style("fill","var(--text)").text("Semaine épidémiologique (Year_Week)");
 
-  // Annotation
+  /* ----- Tendance (régression linéaire) ----- */
+  let regStats = null;
+  if(chkTrend.checked && n>=2){
+    const xs = d3.range(n);
+    const ys = data.map(d => d.cas_confirme);
+    regStats = linregStats(xs, ys); // {a,b,r2}
+    const trendPts = xs.map(i => ({i, yhat: regStats.a + regStats.b*i}));
+    const trendLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(Math.max(0,d.yhat)));
+    extrasG.append("path").datum(trendPts)
+      .attr("fill","none").attr("stroke","var(--trend)").attr("stroke-width",2.5)
+      .attr("d", trendLine).attr("opacity",0)
+      .transition().duration(first?0:DUR).attr("opacity",1);
+  }
+
+  /* ----- Lissage (moyenne mobile) ----- */
+  let smoothStats = null;
+  if(chkSmooth.checked && n>=3){
+    const k = Math.max(3, (+smoothWin.value|0) || 5);
+    const sm = movingAverage(data.map(d=>d.cas_confirme), k);
+    const smPts = sm.map((yhat,i)=>({i,yhat})).filter(d=>!Number.isNaN(d.yhat));
+    const smLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.yhat)).curve(d3.curveMonotoneX);
+    if(smPts.length){
+      extrasG.append("path").datum(smPts)
+        .attr("fill","none").attr("stroke","var(--smooth)").attr("stroke-width",2)
+        .attr("d", smLine).attr("opacity",0)
+        .transition().duration(first?0:DUR).attr("opacity",1);
+      const L = smPts.length;
+      const last = smPts[L-1].yhat, prev = smPts[L-2]?.yhat ?? NaN;
+      smoothStats = {k, last, delta: last - (isNaN(prev)? last : prev)};
+    }
+  }
+
+  /* ----- Annotation stats (coin supérieur droit) ----- */
   addAnnotation(annotG, innerW, innerH, regStats, smoothStats);
 
   // Axe X dynamique
@@ -272,12 +313,12 @@ function drawChart(data, first=false){
       .attr("width",(d,i)=>barW(i));
     lineG.selectAll("path").attr("d", lineGen);
     dotsG.selectAll("circle").attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect));
-    // IC, tendance, projection suivent automatiquement via les accessors
-    extrasG.selectAll("path").attr("opacity",1);
     updateAxisXTicks();
+    // L'annotation reste fixée en coin (pas besoin de recalculer)
   }
   const zoom = d3.zoom().scaleExtent([1,20]).translateExtent([[0,0],[innerW,innerH]]).extent([[0,0],[innerW,innerH]])
     .on("zoom", (event)=>{ zx = event.transform.rescaleX(xIndex); renderOnlyPositions(); });
+
   const overlay = overlayG.append("rect").attr("width", innerW).attr("height", innerH).attr("fill","transparent").style("cursor","grab");
   overlay.lower(); svg.call(zoom); overlay.on("dblclick", ()=> svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity));
 }
@@ -285,40 +326,69 @@ function drawChart(data, first=false){
 /* ---------- Annotation helper ---------- */
 function addAnnotation(g, innerW, innerH, reg, sm){
   g.selectAll("*").remove();
-  const pad = 10, boxW = 270, x = innerW - boxW - 8, y = 8;
+  const pad = 10, boxW = 250;
+  const x = innerW - boxW - 8, y = 8;
+
   const lines = [];
   const f2 = d3.format(".2f"), f3 = d3.format(".3f"), sgn = v => v>0 ? "↑" : v<0 ? "↓" : "≈";
+
   if(reg){
-    lines.push("Régression (confirmés ~ semaine)");
+    lines.push("Régression (confirmés vs semaine)");
     lines.push(`y = ${f2(reg.a)} ${reg.b>=0?"+":"-"} ${f2(Math.abs(reg.b))}·semaine`);
     lines.push(`R² = ${f3(reg.r2)}   tendance: ${sgn(reg.b)}`);
-    lines.push(`Projection: +1…+8 sem (pointillé)`);
   }
   if(sm){
     lines.push(`Lissage (k = ${sm.k})`);
     lines.push(`dernier = ${f2(sm.last)}   Δ = ${f2(sm.delta)}`);
   }
-  if(!lines.length) return;
+  if(!lines.length){
+    // rien à afficher
+    return;
+  }
+
   const box = g.append("g").attr("transform", `translate(${x},${y})`);
-  const rect = box.append("rect").attr("rx",8).attr("ry",8).attr("width",boxW).attr("height",10).attr("fill","var(--panel)").attr("stroke","var(--grid)");
-  const text = box.append("text").attr("x", pad).attr("y", pad+2).attr("fill", "var(--text)").style("font","12px system-ui");
-  lines.forEach((t,i)=> text.append("tspan").attr("x",pad).attr("dy", i?16:0).text(t) );
-  const bbox = text.node().getBBox(); rect.attr("height", bbox.height + pad*2);
+  const rect = box.append("rect")
+    .attr("rx", 8).attr("ry", 8)
+    .attr("width", boxW).attr("height", 10) // hauteur ajustée plus bas
+    .attr("fill", "var(--panel)")
+    .attr("stroke", "var(--grid)");
+
+  const text = box.append("text")
+    .attr("x", pad).attr("y", pad + 2)
+    .attr("fill", "var(--text)")
+    .style("font", "12px system-ui");
+
+  lines.forEach((t, i) => {
+    text.append("tspan")
+      .attr("x", pad)
+      .attr("dy", i ? 16 : 0)
+      .text(t);
+  });
+
+  const bbox = text.node().getBBox();
+  rect.attr("height", bbox.height + pad*2).attr("width", boxW);
 }
 
 /* ---------- Stats helpers ---------- */
-function linregFull(xs, ys){
+// régression linéaire + R²
+function linregStats(xs, ys){
   const n = xs.length;
   const sumX = d3.sum(xs), sumY = d3.sum(ys);
   const xbar = sumX/n, ybar = sumY/n;
   let Sxx=0, Sxy=0, SSE=0, SST=0;
-  for(let i=0;i<n;i++){ const dx=xs[i]-xbar, dy=ys[i]-ybar; Sxx+=dx*dx; Sxy+=dx*dy; }
+  for(let i=0;i<n;i++){
+    const dx=xs[i]-xbar, dy=ys[i]-ybar;
+    Sxx+=dx*dx; Sxy+=dx*dy;
+  }
   const b = Sxy / (Sxx || 1e-9);
   const a = ybar - b*xbar;
-  for(let i=0;i<n;i++){ const yhat = a + b*xs[i]; SSE += (ys[i]-yhat)**2; SST += (ys[i]-ybar)**2; }
-  const s = Math.sqrt( SSE / Math.max(1, n-2) ); // erreur standard résiduelle
+  for(let i=0;i<n;i++){
+    const yhat = a + b*xs[i];
+    SSE += (ys[i]-yhat)**2;
+    SST += (ys[i]-ybar)**2;
+  }
   const r2 = (SST === 0) ? 1 : Math.max(0, 1 - SSE/SST);
-  return {a,b,r2,s,xbar,Sxx};
+  return {a,b,r2};
 }
 // moyenne mobile centrée (fenêtre impaire k)
 function movingAverage(arr, k){
@@ -326,7 +396,9 @@ function movingAverage(arr, k){
   const r = Math.floor(k/2);
   for(let i=0;i<arr.length;i++){
     let s=0,c=0;
-    for(let j=i-r;j<=i+r;j++){ if(j>=0 && j<arr.length){ s+=arr[j]; c++; } }
+    for(let j=i-r;j<=i+r;j++){
+      if(j>=0 && j<arr.length){ s+=arr[j]; c++; }
+    }
     if(c>0) out[i]=s/c;
   }
   return out;
@@ -367,3 +439,5 @@ btnPng.addEventListener("click", async () => {
 /* ---------- Helpers ---------- */
 function parseYW(s){ const m=/(\d{4})\D+(\d+)/.exec(s||""); return {year:m?+m[1]:0, week:m?+m[2]:0}; }
 </script>
+</body>
+</html>
