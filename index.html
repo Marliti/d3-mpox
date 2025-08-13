@@ -2,22 +2,25 @@
 <html lang="fr" data-theme="auto">
 <head>
 <meta charset="utf-8" />
-<title>Mpox – Confirmés + Suspects • Tendance + Lissage + Annotation stats</title>
+<title>Mpox – Confirmés + Suspects • Tendance + IC95% + Projection 4 sem</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <style>
 :root{
-  --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --muted:#94a3b8; --grid:#334155;
-  --confirme:#8b5cf6; --suspect:#22d3ee; --hover:#f59e0b; --axis:#94a3b8; --trend:#10b981; --smooth:#ef4444;
+  --bg:#0f172a; --panel:#111827; --text:#e5e7eb; --muted:#94a3b8; --grid:#334155; --axis:#94a3b8;
+  --confirme:#8b5cf6; --suspect:#22d3ee; --hover:#f59e0b;
+  --trend:#10b981; --trendBand:#10b98133; --smooth:#ef4444; --forecastDash:#10b981;
 }
 :root[data-theme="light"]{
-  --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
-  --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155; --trend:#059669; --smooth:#dc2626;
+  --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0; --axis:#334155;
+  --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706;
+  --trend:#059669; --trendBand:#05966933; --smooth:#dc2626; --forecastDash:#059669;
 }
 @media (prefers-color-scheme: light){
   :root[data-theme="auto"]{
-    --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0;
-    --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706; --axis:#334155; --trend:#059669; --smooth:#dc2626;
+    --bg:#ffffff; --panel:#f8fafc; --text:#0f172a; --muted:#475569; --grid:#e2e8f0; --axis:#334155;
+    --confirme:#5b21b6; --suspect:#0ea5e9; --hover:#d97706;
+    --trend:#059669; --trendBand:#05966933; --smooth:#dc2626; --forecastDash:#059669;
   }
 }
 *{box-sizing:border-box}
@@ -41,7 +44,8 @@ select,input[type="range"],input[type="file"],button{padding:6px 10px;border-rad
 .legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:8px;color:var(--muted);font-size:13px}
 .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
 .note{color:var(--muted);font-size:12px;margin-top:6px}
-.bar:hover{ fill: var(--hover) !important; } .dot:hover{ fill: var(--hover) !important; }
+/* supprimé l'ancienne règle .bar:hover pour laisser le JS gérer la couleur */
+.dot:hover{ fill: var(--hover) !important; }
 .hidden{display:none}
 .switch{display:inline-flex;align-items:center;gap:6px}
 .switch input{appearance:none;width:40px;height:22px;border-radius:999px;position:relative;outline:none;border:1px solid var(--grid);background:#1f2937}
@@ -50,12 +54,18 @@ select,input[type="range"],input[type="file"],button{padding:6px 10px;border-rad
 .switch input:checked::after{transform:translateX(18px)}
 :root[data-theme="light"] .switch input{background:#e5e7eb}
 .badge{font-size:12px;color:var(--muted)}
+/* Transitions douces sur traits/aires */
+path, .bar, .dot { transition: stroke 350ms ease, fill 350ms ease, opacity 350ms ease; }
+.trend-line.is-off, .trend-band.is-off, .forecast-line.is-off { opacity: 0; stroke: var(--muted); }
+.smooth-line.is-off { opacity: 0; stroke: var(--muted); }
+/* Halo au survol */
+.glowable { transition: filter 180ms ease, stroke-width 180ms ease; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Mpox – Cas confirmés (barres) & cas suspects (ligne)</h1>
-  <div class="subtitle">Tendance (régression) + lissage (moyenne mobile) avec annotation statistique. Filtres, zoom/pan, transitions, export PNG/SVG, thème.</div>
+  <div class="subtitle">Régression avec IC95% + projection 4 semaines. Filtres, zoom/pan, transitions, export, thème.</div>
 
   <div class="controls">
     <label>Département :
@@ -65,8 +75,8 @@ select,input[type="range"],input[type="file"],button{padding:6px 10px;border-rad
       <select id="districtSelect"></select>
     </label>
     <label>Durée (ms) :
-      <input type="range" id="durSlider" min="0" max="2000" step="50" value="650" />
-      <span id="durVal">650</span>
+      <input type="range" id="durSlider" min="400" max="5000" step="100" value="1800" />
+      <span id="durVal">1800</span>
     </label>
 
     <label><input type="checkbox" id="chkTrend" checked> Tendance (régression)</label>
@@ -93,8 +103,9 @@ select,input[type="range"],input[type="file"],button{padding:6px 10px;border-rad
   <div class="legend">
     <span class="swatch" style="background:var(--confirme)"></span> cas_confirmé (barres)
     <span class="swatch" style="background:var(--suspect)"></span> cas_suspect (ligne + points)
-    <span class="swatch" style="background:var(--trend)"></span> tendance (régression)
-    <span class="swatch" style="background:var(--smooth)"></span> lissage (moyenne mobile)
+    <span class="swatch" style="background:var(--trend)"></span> régression (tendance)
+    <span class="swatch" style="background:var(--trendBand)"></span> IC95% (moyenne)
+    <span class="swatch" style="background:var(--smooth)"></span> lissage
   </div>
   <div class="note">Double-clic dans le graphique pour réinitialiser le zoom.</div>
 </div>
@@ -113,7 +124,7 @@ themeToggle.addEventListener("change", () => {
   localStorage.setItem("theme", val);
 });
 
-/* ---------- Éléments UI ---------- */
+/* ---------- UI refs ---------- */
 const svg = d3.select(".chart");
 const statusEl = document.getElementById("status");
 const departementSelect = document.getElementById("departementSelect");
@@ -130,15 +141,19 @@ const chkSmooth = document.getElementById("chkSmooth");
 const smoothWin = document.getElementById("smoothWin");
 const smoothVal = document.getElementById("smoothVal");
 
+/* ---------- Constantes ---------- */
 const margin = {top: 28, right: 30, bottom: 64, left: 64};
-let DUR = +durSlider.value, EASE = d3.easeCubic;
+const FORECAST_WEEKS = 4;
+const STAGGER = 50;
+let DUR = +durSlider.value, EASE = d3.easeCubicOut;
 let allRows = [], currentData = [];
 let zx, xIndex, y;
 
-durSlider.addEventListener("input", () => { DUR = +durSlider.value; durVal.textContent = DUR; });
+/* ---------- Écouteurs ---------- */
+durSlider.addEventListener("input", () => { DUR = +durSlider.value; durVal.textContent = DUR; drawChart(currentData, true); });
 smoothWin.addEventListener("input", () => { smoothVal.textContent = smoothWin.value; drawChart(currentData, true); });
-chkTrend.addEventListener("change", () => drawChart(currentData, true));
-chkSmooth.addEventListener("change", () => drawChart(currentData, true));
+chkTrend.addEventListener("change", toggleTrend);
+chkSmooth.addEventListener("change", toggleSmooth);
 
 /* ---------- Responsive ---------- */
 function getSize(){
@@ -162,6 +177,36 @@ fileInput?.addEventListener("change", (e) => {
   reader.readAsText(f, "utf-8");
 });
 async function loadHostedCSV(path){ return d3.dsv(";", `${path}?v=${Date.now()}`); }
+
+/* ---------- Helpers Year-Week ---------- */
+function isoWeekToDate(year, week){
+  const simple = new Date(Date.UTC(year, 0, 4));
+  const dow = simple.getUTCDay() || 7;
+  const monday = new Date(simple);
+  monday.setUTCDate(simple.getUTCDate() - (dow - 1));
+  const d = new Date(monday);
+  d.setUTCDate(monday.getUTCDate() + (week - 1) * 7);
+  return d;
+}
+function dateToYearWeek(d){
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  date.setUTCDate(date.getUTCDate() + 3 - ((date.getUTCDay() + 6) % 7));
+  const week1 = new Date(Date.UTC(date.getUTCFullYear(),0,4));
+  const week = 1 + Math.round(((date - week1) / 86400000 - 3 + ((week1.getUTCDay()+6)%7)) / 7);
+  const year = date.getUTCFullYear();
+  return `${year}-W${String(week).padStart(2,"0")}`;
+}
+function parseYWtoDate(yw){
+  const m = /(\d{4})\D+(\d{1,2})/.exec(yw||"");
+  if(!m) return new Date(NaN);
+  return isoWeekToDate(+m[1], +m[2]);
+}
+function nextYearWeekLabel(lastYW, offset){
+  const d = parseYWtoDate(lastYW);
+  const f = new Date(d);
+  f.setUTCDate(d.getUTCDate() + offset * 7);
+  return dateToYearWeek(f);
+}
 
 /* ---------- Init & Filtres ---------- */
 function init(rows){
@@ -202,203 +247,336 @@ function updateChart(first=false){
   drawChart(grouped, first);
 }
 
-/* ---------- Dessin ---------- */
+/* ---------- Dessin + Animations ---------- */
 function drawChart(data, first=false){
   svg.selectAll("*").remove();
   const {W, H} = getSize(), innerW = W - margin.left - margin.right, innerH = H - margin.top - margin.bottom;
   const root = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-  y = d3.scaleLinear().domain([0, d3.max(data, d => Math.max(d.cas_confirme, d.cas_suspect)) || 1]).nice().range([innerH, 0]);
+  /* defs: filter glow */
+  const defs = svg.append("defs");
+  const glow = defs.append("filter").attr("id","glow").attr("x","-50%").attr("y","-50%").attr("width","200%").attr("height","200%");
+  glow.append("feGaussianBlur").attr("in","SourceGraphic").attr("stdDeviation","3").attr("result","blur");
+  const feMerge = glow.append("feMerge");
+  feMerge.append("feMergeNode").attr("in","blur");
+  feMerge.append("feMergeNode").attr("in","SourceGraphic");
+
   const n = data.length;
-  xIndex = d3.scaleLinear().domain([0, n]).range([0, innerW]); zx = xIndex.copy();
+  const xs = d3.range(n);
+  const ys = data.map(d=>d.cas_confirme);
 
-  const baseBarPad = 0.88, barX = i => zx(i), barW = i => Math.max(1, Math.abs(zx(i+1)-zx(i))*baseBarPad), barCenter = i => zx(i)+barW(i)/2;
+  // Régression + CI + forecast (calculés pour permettre toggle fluide)
+  let reg=null, ciPairs=[], forecastPts=[];
+  if(n>=3){
+    reg = linregFull(xs, ys);
+    const tcrit = (n>=30) ? 1.96 : 2.262;
+    ciPairs = xs.map(i => {
+      const yhat = reg.a + reg.b * i;
+      const seMean = reg.s * Math.sqrt( (1/n) + ((i - reg.xbar)**2) / (reg.Sxx || 1e-9) );
+      return { i, upper: yhat + tcrit*seMean, lower: yhat - tcrit*seMean, yhat };
+    });
+    forecastPts = d3.range(1, FORECAST_WEEKS+1).map(k => ({ i: (n-1)+k, y: reg.a + reg.b*((n-1)+k) }));
+  }
 
-  root.append("g").attr("class","grid").call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat("")).selectAll("line").attr("opacity", .6);
+  // Échelle Y
+  const yMaxData = d3.max(data, d => Math.max(d.cas_confirme, d.cas_suspect)) || 1;
+  const yMaxCI   = ciPairs.length ? d3.max(ciPairs, d=>d.upper) : 0;
+  const yMaxF    = forecastPts.length ? d3.max(forecastPts, d=>d.y) : 0;
+  const yMax     = Math.max(yMaxData, yMaxCI, yMaxF);
+  y = d3.scaleLinear().domain([0, yMax * 1.08]).nice().range([innerH, 0]);
 
-  const overlayG = root.append("g"), barsG=root.append("g"), lineG=root.append("g"), dotsG=root.append("g"), extrasG=root.append("g"), annotG=root.append("g");
+  // Échelle X (inclut espace pour la projection)
+  xIndex = d3.scaleLinear().domain([0, Math.max(n, n + FORECAST_WEEKS)]).range([0, innerW]); 
+  zx = xIndex.copy();
+
+  const baseBarPad = 0.88;
+  const barX = i => zx(i);
+  const barW = i => Math.max(1, Math.abs(zx(i+1) - zx(i)) * baseBarPad);
+  const barCenter = i => zx(i) + barW(i)/2;
+
+  // *** Échelle de couleur pour barres (min -> max)
+  const extent = d3.extent(data, d => d.cas_confirme);
+  const domain = (extent[0] === extent[1]) ? [0, extent[1] || 1] : extent;
+  const colorScale = d3.scaleLinear()
+    .domain(domain)                // valeurs réelles
+    .range(["#a8d5ff", "#08306b"]); // clair -> foncé (peut être ajusté)
+
+  root.append("g").attr("class","grid")
+    .call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat(""))
+    .selectAll("line").attr("opacity", .6);
+
+  const overlayG = root.append("g"), barsG=root.append("g"), lineG=root.append("g"), dotsG=root.append("g"),
+        trendG=root.append("g"), annotG=root.append("g");
   const axisXG = root.append("g").attr("class","axis").attr("transform", `translate(0,${innerH})`);
   const axisYG = root.append("g").attr("class","axis");
 
-  // Barres confirmés
-  barsG.selectAll("rect").data(data, d=>d.Year_Week).join(
-    enter => enter.append("rect").attr("class","bar").attr("fill","var(--confirme)")
-      .attr("x",(d,i)=>barX(i)+(Math.abs(zx(i+1)-zx(i))-barW(i))/2)
-      .attr("width",(d,i)=>barW(i)).attr("y",y(0)).attr("height",0)
-      .on("mouseenter",(e,d)=>showTip(d)).on("mouseleave",hideTip).on("mousemove",moveTip)
-      .call(en=>en.transition().duration(first?0:DUR).ease(EASE)
-        .attr("y",d=>y(d.cas_confirme)).attr("height",d=>y(0)-y(d.cas_confirme))),
-    update => update.on("mouseenter",(e,d)=>showTip(d)).on("mouseleave",hideTip).on("mousemove",moveTip)
-      .call(up=>up.transition().duration(first?0:DUR).ease(EASE)
-        .attr("x",(d,i)=>barX(i)+(Math.abs(zx(i+1)-zx(i))-barW(i))/2).attr("width",(d,i)=>barW(i))
-        .attr("y",d=>y(d.cas_confirme)).attr("height",d=>y(0)-y(d.cas_confirme))),
-    exit => exit.call(ex=>ex.transition().duration(Math.max(150,DUR/1.3)).ease(EASE).attr("y",y(0)).attr("height",0).style("opacity",0).remove())
+  /* ---- BARRES (cascade + transition couleur) ---- */
+  const bars = barsG.selectAll("rect").data(data, d=>d.Year_Week);
+  bars.join(
+    enter => {
+      const en = enter.append("rect")
+        .attr("class","bar")
+        .attr("x",(d,i)=>barX(i)+(Math.abs(zx(i+1)-zx(i))-barW(i))/2)
+        .attr("width",(d,i)=>barW(i))
+        .attr("y", y(0))
+        .attr("height", 0)
+        .attr("fill", () => colorScale(domain[0])) // départ clair
+        .on("mouseenter", function(e,d){
+          d3.select(this).transition().duration(250)
+            .attr("fill", d3.color(colorScale(d.cas_confirme)).brighter(0.8));
+          showTip(d);
+        })
+        .on("mouseleave", function(e,d){
+          d3.select(this).transition().duration(250)
+            .attr("fill", colorScale(d.cas_confirme));
+          hideTip();
+        })
+        .on("mousemove", moveTip);
+
+      // transition hauteur + tween de couleur vers la vraie valeur
+      en.transition()
+        .delay((d,i)=>i*STAGGER)
+        .duration(DUR)
+        .ease(EASE)
+        .attr("y",d=>y(d.cas_confirme))
+        .attr("height",d=>y(0)-y(d.cas_confirme))
+        .tween("fill", function(d){
+          const c0 = d3.color(colorScale(domain[0]));
+          const c1 = d3.color(colorScale(d.cas_confirme));
+          const interp = d3.interpolateRgb(c0, c1);
+          return t => d3.select(this).attr("fill", interp(t));
+        });
+    },
+    update => {
+      update
+        .on("mouseenter", function(e,d){
+          d3.select(this).transition().duration(250)
+            .attr("fill", d3.color(colorScale(d.cas_confirme)).brighter(0.8));
+          showTip(d);
+        })
+        .on("mouseleave", function(e,d){
+          d3.select(this).transition().duration(250)
+            .attr("fill", colorScale(d.cas_confirme));
+          hideTip();
+        })
+        .on("mousemove", moveTip)
+        .transition().duration(DUR).ease(EASE)
+        .attr("x",(d,i)=>barX(i)+(Math.abs(zx(i+1)-zx(i))-barW(i))/2)
+        .attr("width",(d,i)=>barW(i))
+        .attr("y",d=>y(d.cas_confirme))
+        .attr("height",d=>y(0)-y(d.cas_confirme))
+        .attr("fill", d=>colorScale(d.cas_confirme));
+    },
+    exit => exit.transition().duration(Math.max(300,DUR/1.3)).ease(EASE)
+      .attr("y",y(0)).attr("height",0).style("opacity",0).remove()
   );
 
-  // Ligne + points suspects
+  /* ---- LIGNE CAS SUSPECTS (glow au survol) ---- */
   const lineGen = d3.line().x((d,i)=>barCenter(i)).y(d=>y(d.cas_suspect)).curve(d3.curveMonotoneX);
-  const path = lineG.append("path").datum(data).attr("fill","none").attr("stroke","var(--suspect)").attr("stroke-width",2);
-  const oldD = path.attr("d") || lineGen(data), newD = lineGen(data);
-  path.attr("d", oldD).transition().duration(first?0:DUR).ease(EASE).attrTween("d", ()=> {
-    const i = d3.interpolateString(oldD, newD); return t => i(t);
-  });
+  const suspectsPath = lineG.append("path").datum(data)
+    .attr("class","glowable")
+    .attr("fill","none").attr("stroke","var(--suspect)").attr("stroke-width",2)
+    .attr("d", lineGen);
+  drawStrokeAnimated(suspectsPath, Math.max(1000, DUR + 300));
+  suspectsPath
+    .on("mouseenter", function(){ d3.select(this).attr("filter","url(#glow)").transition().duration(180).attr("stroke-width",3.5); })
+    .on("mouseleave", function(){ d3.select(this).transition().duration(180).attr("stroke-width",2).on("end", ()=> d3.select(this).attr("filter", null)); });
 
+  /* ---- POINTS SUSPECTS : “pop” ---- */
   dotsG.selectAll("circle").data(data, d=>d.Year_Week).join(
     en => en.append("circle").attr("class","dot").attr("r",0).attr("fill","var(--suspect)")
       .attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect))
-      .on("mouseenter",(e,d)=>showTip(d,true)).on("mouseleave",hideTip).on("mousemove",moveTip)
-      .call(en=>en.transition().duration(first?0:DUR).ease(EASE).attr("r",3).style("opacity",1)),
-    up => up.on("mouseenter",(e,d)=>showTip(d,true)).on("mouseleave",hideTip).on("mousemove",moveTip)
-      .call(up=>up.transition().duration(first?0:DUR).ease(EASE).attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect)).style("opacity",1)),
-    ex => ex.call(ex=>ex.transition().duration(Math.max(150,DUR/1.3)).ease(EASE).attr("r",0).style("opacity",0).remove())
+      .on("mouseenter", function(e,d){ d3.select(this).transition().duration(150).attr("r",7); showTip(d,true); })
+      .on("mouseleave", function(){ d3.select(this).transition().duration(150).attr("r",4); hideTip(); })
+      .on("mousemove", moveTip)
+      .transition().delay((d,i)=>i*STAGGER).duration(Math.max(500, DUR*0.5)).ease(d3.easeBackOut)
+        .attr("r",7)
+      .transition().duration(300).ease(d3.easeCubicOut)
+        .attr("r",4).style("opacity",1),
+    up => up
+      .on("mouseenter", function(e,d){ d3.select(this).transition().duration(150).attr("r",7); showTip(d,true); })
+      .on("mouseleave", function(){ d3.select(this).transition().duration(150).attr("r",4); hideTip(); })
+      .on("mousemove", moveTip)
+      .transition().duration(Math.max(600, DUR*0.6)).ease(EASE)
+        .attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect)).style("opacity",1),
+    ex => ex.transition().duration(Math.max(300,DUR/1.3)).ease(EASE)
+      .attr("r",0).style("opacity",0).remove()
   );
 
-  // Axes + titres
+  /* ---- RÉGRESSION + IC + projection ---- */
+  if(reg){
+    const area = d3.area().x(d=>barCenter(d.i)).y0(d=>y(d.lower)).y1(d=>y(d.upper)).curve(d3.curveMonotoneX);
+    trendG.append("path").datum(ciPairs)
+      .attr("class","trend-band")
+      .attr("fill","var(--trendBand)").attr("stroke","none")
+      .attr("d", area)
+      .style("opacity", chkTrend.checked ? 1 : 0);
+
+    const trendPts = xs.map(i => ({i, y: reg.a + reg.b*i}));
+    const trendLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y)).curve(d3.curveMonotoneX);
+    const trendPath = trendG.append("path").datum(trendPts)
+      .attr("class","trend-line glowable")
+      .attr("fill","none").attr("stroke","var(--trend)").attr("stroke-width",2.5)
+      .attr("d", trendLine)
+      .style("opacity", chkTrend.checked ? 1 : 0);
+    drawStrokeAnimated(trendPath, Math.max(1400, DUR + 500));
+    trendPath
+      .on("mouseenter", function(){ d3.select(this).attr("filter","url(#glow)").transition().duration(180).attr("stroke-width",3.5); })
+      .on("mouseleave", function(){ d3.select(this).transition().duration(180).attr("stroke-width",2.5).on("end", ()=> d3.select(this).attr("filter", null)); });
+
+    if(forecastPts.length){
+      const fLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y));
+      trendG.append("path")
+        .datum([{i:n-1, y: reg.a + reg.b*(n-1)}, ...forecastPts])
+        .attr("class","forecast-line")
+        .attr("fill","none").attr("stroke","var(--forecastDash)").attr("stroke-width",2.5).attr("stroke-dasharray","6,6")
+        .attr("d", fLine)
+        .style("opacity", chkTrend.checked ? 1 : 0);
+    }
+  }
+
+  /* ---- LISSAGE ---- */
+  if(n>=3){
+    const k = Math.max(3, (+smoothWin.value|0) || 5);
+    const sm = movingAverage(ys, k);
+    const smPts = sm.map((yhat,i)=>({i,y:yhat})).filter(d=>!Number.isNaN(d.y));
+    if(smPts.length){
+      const smLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.y)).curve(d3.curveMonotoneX);
+      const smPath = trendG.append("path").datum(smPts)
+        .attr("class","smooth-line glowable")
+        .attr("fill","none").attr("stroke","var(--smooth)").attr("stroke-width",2)
+        .attr("d", smLine)
+        .style("opacity", chkSmooth.checked ? 1 : 0);
+      if(chkSmooth.checked){ smPath.attr("opacity",0).transition().duration(Math.max(1000, DUR)).attr("opacity",1); }
+      smPath
+        .on("mouseenter", function(){ d3.select(this).attr("filter","url(#glow)").transition().duration(180).attr("stroke-width",3); })
+        .on("mouseleave", function(){ d3.select(this).transition().duration(180).attr("stroke-width",2).on("end", ()=> d3.select(this).attr("filter", null)); });
+    }
+  }
+
+  /* ---- Axes + titres ---- */
   axisYG.call(d3.axisLeft(y).ticks(6));
   updateAxisXTicks();
   svg.append("text").attr("transform","rotate(-90)").attr("y",18).attr("x",-(H/2)).attr("dy","1em").style("text-anchor","middle").style("fill","var(--text)").text("Nombre de cas");
   svg.append("text").attr("transform",`translate(${(W/2)}, ${H-10})`).style("text-anchor","middle").style("fill","var(--text)").text("Semaine épidémiologique (Year_Week)");
 
-  /* ----- Tendance (régression linéaire) ----- */
-  let regStats = null;
-  if(chkTrend.checked && n>=2){
-    const xs = d3.range(n);
-    const ys = data.map(d => d.cas_confirme);
-    regStats = linregStats(xs, ys); // {a,b,r2}
-    const trendPts = xs.map(i => ({i, yhat: regStats.a + regStats.b*i}));
-    const trendLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(Math.max(0,d.yhat)));
-    extrasG.append("path").datum(trendPts)
-      .attr("fill","none").attr("stroke","var(--trend)").attr("stroke-width",2.5)
-      .attr("d", trendLine).attr("opacity",0)
-      .transition().duration(first?0:DUR).attr("opacity",1);
-  }
+  /* ---- Annotation ---- */
+  addAnnotation(annotG, innerW, innerH, reg ? {a:reg.a, b:reg.b, r2:reg.r2} : null, null);
 
-  /* ----- Lissage (moyenne mobile) ----- */
-  let smoothStats = null;
-  if(chkSmooth.checked && n>=3){
-    const k = Math.max(3, (+smoothWin.value|0) || 5);
-    const sm = movingAverage(data.map(d=>d.cas_confirme), k);
-    const smPts = sm.map((yhat,i)=>({i,yhat})).filter(d=>!Number.isNaN(d.yhat));
-    const smLine = d3.line().x(d=>barCenter(d.i)).y(d=>y(d.yhat)).curve(d3.curveMonotoneX);
-    if(smPts.length){
-      extrasG.append("path").datum(smPts)
-        .attr("fill","none").attr("stroke","var(--smooth)").attr("stroke-width",2)
-        .attr("d", smLine).attr("opacity",0)
-        .transition().duration(first?0:DUR).attr("opacity",1);
-      const L = smPts.length;
-      const last = smPts[L-1].yhat, prev = smPts[L-2]?.yhat ?? NaN;
-      smoothStats = {k, last, delta: last - (isNaN(prev)? last : prev)};
-    }
-  }
-
-  /* ----- Annotation stats (coin supérieur droit) ----- */
-  addAnnotation(annotG, innerW, innerH, regStats, smoothStats);
-
-  // Axe X dynamique
+  /* ---- Axe X dynamique ---- */
   function updateAxisXTicks(){
     const visStart = Math.max(0, Math.floor(zx.invert(0)));
-    const visEnd = Math.min(n, Math.ceil(zx.invert(innerW)));
-    const visible = data.slice(visStart, visEnd).map((d,i)=>({idx:visStart+i,label:d.Year_Week}));
-    const maxTicks = 16, step = Math.max(1, Math.ceil(visible.length / maxTicks));
-    const ticks = visible.filter((_,i)=> i%step===0);
-    axisXG.call(d3.axisBottom(d3.scaleLinear().domain([0, innerW]).range([0, innerW]))
-      .tickValues(ticks.map(t=>zx(t.idx))).tickFormat((_,i)=>ticks[i]?.label ?? ""))
-      .selectAll("text").attr("transform","rotate(-35)").style("text-anchor","end");
+    const visEnd = Math.min(n + FORECAST_WEEKS, Math.ceil(zx.invert(innerW)));
+    const maxTicks = 16;
+    const step = Math.max(1, Math.ceil((visEnd - visStart) / maxTicks));
+    const lastYW = n > 0 ? data[n-1].Year_Week : null;
+    function idxLabel(i){
+      if(i < n) return data[i].Year_Week;
+      if(lastYW) return nextYearWeekLabel(lastYW, i - (n-1));
+      return `+${i-(n-1)}w`;
+    }
+    const ticksIdx = [];
+    for(let i = visStart; i <= visEnd; i += step){ ticksIdx.push(i); }
+    axisXG.call(
+      d3.axisBottom(d3.scaleLinear().domain([0, innerW]).range([0, innerW]))
+        .tickValues(ticksIdx.map(i => zx(i)))
+        .tickFormat((_, i) => idxLabel(ticksIdx[i]) )
+    ).selectAll("text").attr("transform", "rotate(-35)").style("text-anchor","end");
   }
 
-  // Zoom/Pan
+  /* ---- Zoom/Pan ---- */
   function renderOnlyPositions(){
     barsG.selectAll("rect")
       .attr("x",(d,i)=>barX(i)+(Math.abs(zx(i+1)-zx(i))-barW(i))/2)
       .attr("width",(d,i)=>barW(i));
     lineG.selectAll("path").attr("d", lineGen);
     dotsG.selectAll("circle").attr("cx",(d,i)=>barCenter(i)).attr("cy",d=>y(d.cas_suspect));
+    trendG.selectAll("path"); // suivent leurs accessors
     updateAxisXTicks();
-    // L'annotation reste fixée en coin (pas besoin de recalculer)
   }
   const zoom = d3.zoom().scaleExtent([1,20]).translateExtent([[0,0],[innerW,innerH]]).extent([[0,0],[innerW,innerH]])
     .on("zoom", (event)=>{ zx = event.transform.rescaleX(xIndex); renderOnlyPositions(); });
-
   const overlay = overlayG.append("rect").attr("width", innerW).attr("height", innerH).attr("fill","transparent").style("cursor","grab");
   overlay.lower(); svg.call(zoom); overlay.on("dblclick", ()=> svg.transition().duration(250).call(zoom.transform, d3.zoomIdentity));
+}
+
+/* ---------- Toggle couleur/opacity sans redessiner ---------- */
+function toggleTrend(){
+  const on = chkTrend.checked;
+  d3.selectAll(".trend-line, .trend-band, .forecast-line")
+    .classed("is-off", !on)
+    .transition().duration(600)
+    .style("opacity", on ? 1 : 0)
+    .attr("stroke", on ? "var(--trend)" : "var(--muted)");
+}
+function toggleSmooth(){
+  const on = chkSmooth.checked;
+  d3.selectAll(".smooth-line")
+    .classed("is-off", !on)
+    .transition().duration(600)
+    .style("opacity", on ? 1 : 0)
+    .attr("stroke", on ? "var(--smooth)" : "var(--muted)");
+}
+
+/* ---------- Helpers d’animation ---------- */
+function drawStrokeAnimated(pathSel, duration){
+  try{
+    const node = pathSel.node();
+    const L = node.getTotalLength();
+    pathSel
+      .attr("stroke-dasharray", L + " " + L)
+      .attr("stroke-dashoffset", L)
+      .transition().duration(duration).ease(d3.easeCubicOut)
+      .attr("stroke-dashoffset", 0);
+  }catch(e){
+    pathSel.attr("opacity",0).transition().duration(duration).attr("opacity",1);
+  }
 }
 
 /* ---------- Annotation helper ---------- */
 function addAnnotation(g, innerW, innerH, reg, sm){
   g.selectAll("*").remove();
-  const pad = 10, boxW = 250;
-  const x = innerW - boxW - 8, y = 8;
-
+  const pad = 10, boxW = 270, x = innerW - boxW - 8, y = 8;
   const lines = [];
   const f2 = d3.format(".2f"), f3 = d3.format(".3f"), sgn = v => v>0 ? "↑" : v<0 ? "↓" : "≈";
-
   if(reg){
-    lines.push("Régression (confirmés vs semaine)");
+    lines.push("Régression (confirmés ~ semaine)");
     lines.push(`y = ${f2(reg.a)} ${reg.b>=0?"+":"-"} ${f2(Math.abs(reg.b))}·semaine`);
     lines.push(`R² = ${f3(reg.r2)}   tendance: ${sgn(reg.b)}`);
+    lines.push(`Projection: +1…+4 sem (pointillé)`);
   }
   if(sm){
     lines.push(`Lissage (k = ${sm.k})`);
     lines.push(`dernier = ${f2(sm.last)}   Δ = ${f2(sm.delta)}`);
   }
-  if(!lines.length){
-    // rien à afficher
-    return;
-  }
-
+  if(!lines.length) return;
   const box = g.append("g").attr("transform", `translate(${x},${y})`);
-  const rect = box.append("rect")
-    .attr("rx", 8).attr("ry", 8)
-    .attr("width", boxW).attr("height", 10) // hauteur ajustée plus bas
-    .attr("fill", "var(--panel)")
-    .attr("stroke", "var(--grid)");
-
-  const text = box.append("text")
-    .attr("x", pad).attr("y", pad + 2)
-    .attr("fill", "var(--text)")
-    .style("font", "12px system-ui");
-
-  lines.forEach((t, i) => {
-    text.append("tspan")
-      .attr("x", pad)
-      .attr("dy", i ? 16 : 0)
-      .text(t);
-  });
-
-  const bbox = text.node().getBBox();
-  rect.attr("height", bbox.height + pad*2).attr("width", boxW);
+  const rect = box.append("rect").attr("rx",8).attr("ry",8).attr("width",boxW).attr("height",10).attr("fill","var(--panel)").attr("stroke","var(--grid)");
+  const text = box.append("text").attr("x", pad).attr("y", pad+2).attr("fill", "var(--text)").style("font","12px system-ui");
+  lines.forEach((t,i)=> text.append("tspan").attr("x",pad).attr("dy", i?16:0).text(t) );
+  const bbox = text.node().getBBox(); rect.attr("height", bbox.height + pad*2);
 }
 
 /* ---------- Stats helpers ---------- */
-// régression linéaire + R²
-function linregStats(xs, ys){
+function linregFull(xs, ys){
   const n = xs.length;
   const sumX = d3.sum(xs), sumY = d3.sum(ys);
   const xbar = sumX/n, ybar = sumY/n;
   let Sxx=0, Sxy=0, SSE=0, SST=0;
-  for(let i=0;i<n;i++){
-    const dx=xs[i]-xbar, dy=ys[i]-ybar;
-    Sxx+=dx*dx; Sxy+=dx*dy;
-  }
+  for(let i=0;i<n;i++){ const dx=xs[i]-xbar, dy=ys[i]-ybar; Sxx+=dx*dx; Sxy+=dx*dy; }
   const b = Sxy / (Sxx || 1e-9);
   const a = ybar - b*xbar;
-  for(let i=0;i<n;i++){
-    const yhat = a + b*xs[i];
-    SSE += (ys[i]-yhat)**2;
-    SST += (ys[i]-ybar)**2;
-  }
+  for(let i=0;i<n;i++){ const yhat = a + b*xs[i]; SSE += (ys[i]-yhat)**2; SST += (ys[i]-ybar)**2; }
+  const s = Math.sqrt( SSE / Math.max(1, n-2) );
   const r2 = (SST === 0) ? 1 : Math.max(0, 1 - SSE/SST);
-  return {a,b,r2};
+  return {a,b,r2,s,xbar,Sxx};
 }
-// moyenne mobile centrée (fenêtre impaire k)
 function movingAverage(arr, k){
   const out = new Array(arr.length).fill(NaN);
   const r = Math.floor(k/2);
   for(let i=0;i<arr.length;i++){
     let s=0,c=0;
-    for(let j=i-r;j<=i+r;j++){
-      if(j>=0 && j<arr.length){ s+=arr[j]; c++; }
-    }
+    for(let j=i-r;j<=i+r;j++){ if(j>=0 && j<arr.length){ s+=arr[j]; c++; } }
     if(c>0) out[i]=s/c;
   }
   return out;
@@ -413,11 +591,10 @@ function showTip(d){
 function moveTip(e){ tooltip.style.left = e.clientX + "px"; tooltip.style.top = e.clientY + "px"; }
 function hideTip(){ tooltip.style.opacity = 0; }
 
-/* ---------- Export SVG & PNG ---------- */
+/* ---------- Export ---------- */
 function getInlineStyles(){ let css=""; for(const s of document.styleSheets){ try{ for(const r of s.cssRules){ css+=r.cssText+"\n"; } }catch(e){} } return css; }
 function cloneCurrentSVG(){ const node=document.querySelector("svg.chart"); const clone=node.cloneNode(true); const st=document.createElement("style"); st.type="text/css"; st.textContent=getInlineStyles(); clone.insertBefore(st, clone.firstChild); return clone; }
 function downloadBlob(blob, name){ const a=document.createElement("a"); const url=URL.createObjectURL(blob); a.href=url; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },0); }
-
 btnSvg.addEventListener("click", () => {
   const clone=cloneCurrentSVG(), ser=new XMLSerializer(); let svgStr=ser.serializeToString(clone);
   if(!svgStr.match(/^<svg[^>]+xmlns=/)){ svgStr=svgStr.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"'); }
@@ -436,7 +613,7 @@ btnPng.addEventListener("click", async () => {
   img.src=url;
 });
 
-/* ---------- Helpers ---------- */
+/* ---------- Util ---------- */
 function parseYW(s){ const m=/(\d{4})\D+(\d+)/.exec(s||""); return {year:m?+m[1]:0, week:m?+m[2]:0}; }
 </script>
 </body>
