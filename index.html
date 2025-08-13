@@ -44,7 +44,7 @@ select,input[type="range"],input[type="file"],button{padding:6px 10px;border-rad
 .legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:8px;color:var(--muted);font-size:13px}
 .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
 .note{color:var(--muted);font-size:12px;margin-top:6px}
-/* supprimé l'ancienne règle .bar:hover pour laisser le JS gérer la couleur */
+/* pas de .bar:hover CSS : le JS gère la couleur contextuelle */
 .dot:hover{ fill: var(--hover) !important; }
 .hidden{display:none}
 .switch{display:inline-flex;align-items:center;gap:6px}
@@ -294,12 +294,12 @@ function drawChart(data, first=false){
   const barW = i => Math.max(1, Math.abs(zx(i+1) - zx(i)) * baseBarPad);
   const barCenter = i => zx(i) + barW(i)/2;
 
-  // *** Échelle de couleur pour barres (min -> max)
+  /* --- Palette rouge “vivante” pour les barres --- */
   const extent = d3.extent(data, d => d.cas_confirme);
   const domain = (extent[0] === extent[1]) ? [0, extent[1] || 1] : extent;
   const colorScale = d3.scaleLinear()
-    .domain(domain)                // valeurs réelles
-    .range(["#a8d5ff", "#08306b"]); // clair -> foncé (peut être ajusté)
+    .domain(domain)
+    .range(["#fee0d2", "#de2d26"]); // clair -> rouge profond
 
   root.append("g").attr("class","grid")
     .call(d3.axisLeft(y).ticks(6).tickSize(-innerW).tickFormat(""))
@@ -320,7 +320,7 @@ function drawChart(data, first=false){
         .attr("width",(d,i)=>barW(i))
         .attr("y", y(0))
         .attr("height", 0)
-        .attr("fill", () => colorScale(domain[0])) // départ clair
+        .attr("fill", "#fee0d2") // départ clair
         .on("mouseenter", function(e,d){
           d3.select(this).transition().duration(250)
             .attr("fill", d3.color(colorScale(d.cas_confirme)).brighter(0.8));
@@ -341,7 +341,7 @@ function drawChart(data, first=false){
         .attr("y",d=>y(d.cas_confirme))
         .attr("height",d=>y(0)-y(d.cas_confirme))
         .tween("fill", function(d){
-          const c0 = d3.color(colorScale(domain[0]));
+          const c0 = d3.color("#fee0d2");
           const c1 = d3.color(colorScale(d.cas_confirme));
           const interp = d3.interpolateRgb(c0, c1);
           return t => d3.select(this).attr("fill", interp(t));
